@@ -108,3 +108,37 @@ def test_person_profile_threads(conn):
 
 def test_gallery_lists_photo(conn):
     assert [g["mtype"] for g in s.gallery(conn, s.Filters())] == ["photo"]
+
+
+def test_thread_list_carries_last_message(conn):
+    (row,) = (t for t in s.list_threads(conn) if t["id"] == "fb:mariedupre_111")
+    assert row["last_body"] == "À demain !"
+
+
+def test_thread_list_offset(conn):
+    assert [t["id"] for t in s.list_threads(conn, limit=1, offset=1)] == ["fb:mariedupre_111"]
+
+
+def test_on_this_day_counts_conversation_messages(conn):
+    day = datetime.fromtimestamp(1552564800).strftime("%m-%d")
+    convos = s.on_this_day(conn, day)["conversations"]
+    assert {c["thread_id"]: c["n"] for c in convos}["fb:mariedupre_111"] == 4
+
+
+def test_on_this_day_standalone_items(conn):
+    day = datetime.fromtimestamp(1270000002).strftime("%m-%d")
+    assert [it["kind"] for it in s.on_this_day(conn, day)["items"]] == ["post"]
+
+
+def test_people_offset(conn):
+    everyone = s.list_people(conn, limit=10)
+    assert s.list_people(conn, limit=1, offset=1)[0]["id"] == everyone[1]["id"]
+
+
+def test_person_thread_count(conn):
+    marie = s.resolve_people(conn, "Marie")[0]
+    assert s.person_profile(conn, marie)["n_threads"] == 2
+
+
+def test_stats_owner_id(conn):
+    assert s.stats(conn)["me_id"] == s.me_id(conn)

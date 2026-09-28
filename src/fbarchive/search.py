@@ -260,9 +260,13 @@ def thread_window(
 
 
 def list_threads(
-    conn: sqlite3.Connection, q: str = "", with_id: int | None = None, limit: int = 100
+    conn: sqlite3.Connection,
+    q: str = "",
+    with_id: int | None = None,
+    limit: int = 100,
+    offset: int = 0,
 ) -> list[dict[str, Any]]:
-    sql = "SELECT t.* FROM threads t"
+    """Threads by recent activity, each with its last message for the inbox preview."""
     clauses, params = ["t.n_items > 0"], []
     if q:
         clauses.append("t.title LIKE ?")
@@ -270,20 +274,59 @@ def list_threads(
     if with_id is not None:
         clauses.append("t.id IN (SELECT thread_id FROM thread_people WHERE person_id = ?)")
         params.append(with_id)
-    sql += " WHERE " + " AND ".join(clauses) + " ORDER BY t.last_ts DESC LIMIT ?"
-    return [dict(r) for r in conn.execute(sql, [*params, limit])]
+    sql = (
+        "WITH page AS (SELECT t.* FROM threads t WHERE " + " AND ".join(clauses) + " "
+        "  ORDER BY t.last_ts DESC LIMIT ? OFFSET ?), "
+        "last AS (SELECT page.id AS tid, (SELECT i.id FROM items i WHERE i.thread_id = page.id "
+        "  ORDER BY i.ts DESC, i.id DESC LIMIT 1) AS iid FROM page) "
+        "SELECT page.*, i.body AS last_body, p.name AS last_author, p.is_me AS last_is_me, "
+        "  (SELECT mtype FROM media WHERE item_id = i.id LIMIT 1) AS last_mtype "
+        "FROM page JOIN last ON last.tid = page.id LEFT JOIN items i ON i.id = last.iid "
+        "LEFT JOIN people p ON p.id = i.author_id ORDER BY page.last_ts DESC"
+    )
+    return [dict(r) for r in conn.execute(sql, [*params, limit, offset])]
 
 
-def list_people(conn: sqlite3.Connection, q: str = "", limit: int = 50) -> list[dict[str, Any]]:
+def on_this_day(conn: sqlite3.Connection, month_day: str) -> dict[str, Any]:
+    """Memories for a MM-DD: standalone items plus per-thread message counts, by year."""
+    day = "strftime('%m-%d', i.ts / 1000, 'unixepoch', 'localtime') = ?"
+    items = [
+        _item(r)
+        for r in conn.execute(
+            f"SELECT {ITEM_COLS}, substr(coalesce(i.body, i.meta, ''), 1, 400) AS snippet "
+            f"FROM items i {ITEM_JOINS} WHERE {day} AND i.thread_id IS NULL "
+            "AND i.kind IN ('post', 'photo', 'video', 'comment', 'event', 'friend', 'group') "
+            "ORDER BY i.ts DESC LIMIT 150",
+            (month_day,),
+        )
+    ]
+    _attach_media(conn, items)
+    convos = [
+        dict(r)
+        for r in conn.execute(
+            "SELECT i.thread_id, t.title AS thread_title, t.is_group, "
+            "strftime('%Y', i.ts / 1000, 'unixepoch', 'localtime') AS year, count(*) AS n, "
+            "min(i.id) AS first_id, max(i.ts) AS ts "
+            f"FROM items i JOIN threads t ON t.id = i.thread_id WHERE {day} "
+            "GROUP BY i.thread_id, year ORDER BY year DESC, n DESC",
+            (month_day,),
+        )
+    ]
+    return {"items": items, "conversations": convos}
+
+
+def list_people(
+    conn: sqlite3.Connection, q: str = "", limit: int = 50, offset: int = 0
+) -> list[dict[str, Any]]:
     """People ranked by how much they wrote; `q` matches ignoring case."""
     where, params = ("WHERE p.name LIKE ?", [f"%{q}%"]) if q else ("", [])
     sql = (
         "SELECT p.id, p.name, p.is_me, "
         "(SELECT count(*) FROM items WHERE author_id = p.id) AS n_items, "
         "(SELECT count(*) FROM thread_people WHERE person_id = p.id) AS n_threads "
-        f"FROM people p {where} ORDER BY n_items DESC LIMIT ?"
+        f"FROM people p {where} ORDER BY n_items DESC, p.id LIMIT ? OFFSET ?"
     )
-    return [dict(r) for r in conn.execute(sql, [*params, limit])]
+    return [dict(r) for r in conn.execute(sql, [*params, limit, offset])]
 
 
 def resolve_people(conn: sqlite3.Connection, name: str) -> list[int]:
@@ -314,6 +357,11 @@ def person_profile(conn: sqlite3.Connection, person_id: int) -> dict[str, Any] |
         )
     ]
     prof["threads"] = list_threads(conn, with_id=person_id, limit=200)
+    prof["n_threads"] = conn.execute(
+        "SELECT count(*) FROM thread_people tp JOIN threads t ON t.id = tp.thread_id "
+        "WHERE tp.person_id = ? AND t.n_items > 0",
+        (person_id,),
+    ).fetchone()[0]
     prof["n_items"] = conn.execute(
         "SELECT count(*) FROM items WHERE author_id = ?", (person_id,)
     ).fetchone()[0]
@@ -356,8 +404,21 @@ def stats(conn: sqlite3.Connection) -> dict[str, Any]:
         "media": conn.execute("SELECT count(*) FROM media").fetchone()[0],
         "range": list(conn.execute("SELECT min(ts), max(ts) FROM items").fetchone()),
         "me": (conn.execute("SELECT name FROM people WHERE is_me = 1").fetchone() or [None])[0],
+        "me_id": me_id(conn),
+        "me_avatar": _album_cover(conn, "Profilepictures"),
+        "me_cover": _album_cover(conn, "Coverphotos"),
         "sources": [dict(r) for r in conn.execute("SELECT * FROM sources")],
     }
+
+
+def _album_cover(conn: sqlite3.Connection, album_prefix: str) -> int | None:
+    """Most recent photo of an album folder (Facebook names them e.g. Profilepictures_123)."""
+    row = conn.execute(
+        "SELECT m.id FROM media m JOIN items i ON i.id = m.item_id "
+        "WHERE m.path LIKE ? AND m.mtype = 'photo' ORDER BY i.ts DESC LIMIT 1",
+        (f"%/{album_prefix}_%",),
+    ).fetchone()
+    return row[0] if row else None
 
 
 def media_path(conn: sqlite3.Connection, media_id: int) -> tuple[str, str] | None:

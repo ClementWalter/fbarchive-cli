@@ -14,7 +14,7 @@ def client(db_path: Path, tmp_path: Path) -> TestClient:
 
 
 def test_index_served(client):
-    assert "fbarchive" in client.get("/").text
+    assert '<div id="app">' in client.get("/").text
 
 
 def test_search_endpoint(client):
@@ -62,3 +62,11 @@ def test_original_media_served(client):
 
 def test_missing_media_404(client):
     assert client.get("/media/999999").status_code == 404
+
+
+def test_onthisday_endpoint(client):
+    assert "conversations" in client.get("/api/onthisday", params={"day": "03-14"}).json()
+
+
+def test_threads_endpoint_paging(client):
+    assert len(client.get("/api/threads", params={"limit": 1}).json()) == 1

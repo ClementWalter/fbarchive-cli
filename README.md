@@ -1,21 +1,29 @@
 # fbarchive
 
-Fast, local search and viewer for a Facebook **"Download your information"**
+Fast, local search and a clean Facebook-like viewer for a Facebook **"Download your information"**
 export (JSON format). Everything stays on your machine.
 
+- **Facebook-like UI**: a top bar with global search, a left sidebar, a
+  central feed and a right-hand column, in light and dark mode, and usable on
+  a phone.
+- **Home: On this day**: memories from this date in past years (posts, photos,
+  and the conversations you had that day).
 - **Full-text search** over Messenger, posts, comments, reactions, events,
-  groups, friends and activity logs. It ignores accents (`reunion` finds
-  `réunion`), treats the last word as a prefix, and passes FTS5 syntax
-  (`"exact phrase"`, `a OR b`, `NEAR(a b)`) straight through.
-- **Filters**: kind, "conversations with", "written by", date range, sort by
-  relevance or date.
-- **Thread view**: opens a conversation at the matching message, with infinite
-  scroll in both directions, inline photos, videos, stickers and reactions.
-- **People pages**: messages exchanged per year, and every thread with that
-  person.
-- **Timeline**: everything, month by month. Click a month to browse it.
-- **Gallery**: every photo and video by month, filterable by person, thread and
-  date, with cached WebP thumbnails.
+  groups, friends and activity logs. Results appear as you type and ignore
+  accents (`reunion` finds `réunion`). FTS5 syntax (`"exact phrase"`,
+  `a OR b`, `NEAR(a b)`) is passed straight through. You can filter by
+  conversation partner, author, year or type, and a bar chart shows when the
+  hits happened.
+- **Messenger**: an inbox with the last message of each chat, and
+  conversations with grouped bubbles, reactions, stickers, photos, videos,
+  calls and shared links. It opens at the message a search found, scrolls
+  back and forward through the whole thread, and has a members panel.
+- **Profiles**: cover and avatar (your real ones for your own profile),
+  messages exchanged per year, conversations, photos and activity.
+- **People**: a grid of everyone, ranked by messages.
+- **Memories**: the whole archive month by month, with a heatmap per year.
+- **Photos**: every photo and video by month, with a full-screen viewer
+  (←/→ to browse) that links back to the conversation.
 - Facebook's double-encoded UTF-8 (`Ã©` for `é`) is repaired on import.
 - Re-importable: point it at any number of exports and items are deduplicated
   by content, so re-running is a no-op.

@@ -4,6 +4,7 @@ import hashlib
 import logging
 import sqlite3
 import threading
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -104,12 +105,21 @@ def create_app(db_path: Path, thumbs_dir: Path) -> FastAPI:
         return s.thread_window(db(), thread_id, around=around, before=before, after=after, n=n)
 
     @app.get("/api/threads")
-    def api_threads(q: Str = "", with_: Annotated[int | None, Query(alias="with")] = None):
-        return s.list_threads(db(), q=q, with_id=with_, limit=300)
+    def api_threads(
+        q: Str = "",
+        with_: Annotated[int | None, Query(alias="with")] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ):
+        return s.list_threads(db(), q=q, with_id=with_, limit=min(limit, 500), offset=offset)
+
+    @app.get("/api/onthisday")
+    def api_onthisday(day: Str = ""):
+        return s.on_this_day(db(), day or datetime.now().strftime("%m-%d"))
 
     @app.get("/api/people")
-    def api_people(q: Str = "", limit: int = 50):
-        return s.list_people(db(), q=q, limit=min(limit, 1000))
+    def api_people(q: Str = "", limit: int = 50, offset: int = 0):
+        return s.list_people(db(), q=q, limit=min(limit, 1000), offset=offset)
 
     @app.get("/api/person/{person_id}")
     def api_person(person_id: int):
