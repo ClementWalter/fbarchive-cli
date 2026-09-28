@@ -802,6 +802,7 @@ views.item = async ({ parts }) => {
       ${ev?.fbid ? `<div class="card" id="shared"><h3 class="card-title">Shared in Messenger</h3>${spinner()}</div>` : ""}
       ${ev ? `<div class="card" id="mentions"><h3 class="card-title">Mentioned in conversations</h3>${spinner()}</div>` : ""}
       ${day ? `<div class="card" id="thatday"><h3 class="card-title">Conversations that day</h3>${spinner()}</div>` : ""}
+      ${ev?.start ? `<div class="card" id="dayafter"><h3 class="card-title">The day after</h3>${spinner()}</div>` : ""}
     </aside></div>`;
   const main = $("#item-main");
   if (ev) {
@@ -826,7 +827,9 @@ views.item = async ({ parts }) => {
           ev.rsvp === "hosted" ? "You created this event"
           : ev.rsvp === "visited" ? "You viewed this event without answering"
           : `Your response: <b>${esc(RSVP[ev.rsvp]?.label)}</b>`}${ev.responded ? ` <span class="muted">· ${esc(fmtDate(ev.responded))}</span>` : ""}</div>` : ""}
-        ${ev.rsvp !== "hosted" ? `<div class="intro-row muted">${icon("info", "sm")} Facebook's export doesn't include the host, the guest list or who invited you.</div>` : ""}
+        <div class="intro-row muted">${icon("info", "sm")} ${ev.rsvp === "hosted"
+          ? "Facebook's export doesn't include your guest list or their answers. “View on Facebook” shows them if the event still exists."
+          : "Facebook's export doesn't include the host, the guest list or who invited you."}</div>
         ${hours ? `<div class="intro-row">${icon("clock", "sm")} ${hours < 24 ? `${Math.round(hours * 10) / 10} hours` : `${Math.round(hours / 24)} days`}</div>` : ""}
         ${ev.place || ev.address ? `<div class="intro-row">${icon("mapPin", "sm")} <span>${esc([...new Set([ev.place, ev.address].filter(Boolean))].join(" · "))}
           ${map ? ` · <a class="link" href="${map}" target="_blank" rel="noopener">Open map</a>` : ""}</span></div>` : ""}
@@ -851,6 +854,15 @@ views.item = async ({ parts }) => {
       || `<p class="muted card-empty">No messages mention it around that date.</p>`);
   } else {
     main.append(postCard(it, { full: true }));
+  }
+  if (ev?.start) {
+    // Thank-you messages and shared photos the next day are the best trace of who came.
+    const after = isoDay((ev.end && ev.end > ev.start ? ev.end : ev.start) + 12 * 3600000);
+    const res = await api("search", { kind: "message", since: after, until: after, sort: "old", limit: 300 });
+    const box = $("#dayafter");
+    if (box) box.innerHTML = `<h3 class="card-title">The day after</h3><p class="muted card-empty" style="padding-top:0">Who wrote to you after the event.</p>`
+      + (threadRows(res.items, (t, n) => `${plural(n, "message")} · ${hl((t.snippet || "").slice(0, 80))}`)
+      || `<p class="muted card-empty">No messages the day after.</p>`);
   }
   if (day) {
     const res = await api("search", { kind: "message", since: day, until: day, sort: "old", limit: 300 });
