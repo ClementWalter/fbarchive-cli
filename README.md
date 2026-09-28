@@ -22,6 +22,12 @@ export (JSON format). Everything stays on your machine.
   messages exchanged per year, conversations, photos and activity.
 - **People**: a grid of everyone, ranked by messages.
 - **Memories**: the whole archive month by month, with a heatmap per year.
+- **Events**: each event has its own page with the date, place (and a map
+  link), your RSVP (going, interested, can't go, invited or your own event),
+  the description, a link to the event on Facebook, and the conversations that
+  mention it or that happened that day. You can filter events by RSVP.
+- **Item pages**: click any post, comment or photo card to open it on its own
+  page, next to that day's conversations.
 - **Photos**: every photo and video by month, with a full-screen viewer
   (←/→ to browse) that links back to the conversation.
 - Facebook's double-encoded UTF-8 (`Ã©` for `é`) is repaired on import.

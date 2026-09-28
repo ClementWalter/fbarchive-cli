@@ -21,6 +21,8 @@ def item_uid(platform: str, it: Item) -> str:
     Non-message items with a body ignore title/meta: Facebook lists the same post in
     several files with different headers ("wrote on X's profile" vs no title).
     """
+    if it.key:
+        return hashlib.blake2b(f"{platform}\x1f{it.key}".encode(), digest_size=12).hexdigest()
     parts = [platform, it.kind, it.thread, it.ts, it.author, it.body]
     if it.thread or not it.body:
         parts += [it.title, it.meta]
@@ -96,12 +98,23 @@ class Indexer:
 
     def _add_item(self, platform: str, source_id: int, it: Item) -> int | None:
         """Return the number of media rows added, or None when the item already existed."""
+        uid = item_uid(platform, it)
+        extra = orjson.dumps(it.extra).decode() if it.extra else None
+        if it.key:
+            # Keyed items (events) take the latest export's RSVP and fill missing details.
+            cur = self.conn.execute(
+                "UPDATE items SET category = ?, extra = ?, body = coalesce(?, body), "
+                "meta = coalesce(?, meta) WHERE uid = ?",
+                (it.category, extra, it.body, it.meta, uid),
+            )
+            if cur.rowcount:
+                return None
         cur = self.conn.execute(
             "INSERT OR IGNORE INTO items"
             "(uid, platform, kind, category, thread_id, author_id, ts, title, body, meta, extra) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
-                item_uid(platform, it),
+                uid,
                 platform,
                 it.kind,
                 it.category,
@@ -111,7 +124,7 @@ class Indexer:
                 it.title,
                 it.body,
                 it.meta,
-                orjson.dumps(it.extra).decode() if it.extra else None,
+                extra,
             ),
         )
         if not cur.rowcount:

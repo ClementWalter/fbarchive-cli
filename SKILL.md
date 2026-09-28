@@ -89,6 +89,11 @@ fbarchive search -k post --since 2015 --until 2015 --sort old
 fbarchive search "anniversaire" --from "Zoé Exemple" --json
 ```
 
+Events are one record each (`-k event`), and their `--json` `extra.event`
+holds `start`, `end`, `rsvp` (`going`, `interested`, `declined`, `invited`,
+`hosted`), `place`, `address`, `lat`/`lon` and `url` when Facebook exported
+them.
+
 ### `fbarchive threads [TITLE] [--with NAME] [-n N] [--json]`
 
 Conversations ordered by most recent activity, with their thread ids.

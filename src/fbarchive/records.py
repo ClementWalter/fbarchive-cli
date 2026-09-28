@@ -31,3 +31,5 @@ class Item:
     extra: dict[str, Any] | None = None
     # (path relative to the export root, media type)
     media: list[tuple[str, str]] = field(default_factory=list)
+    # Stable identity overriding the content hash (e.g. an event whose RSVP can change).
+    key: str | None = None

@@ -32,9 +32,17 @@ def create_app(db_path: Path, thumbs_dir: Path) -> FastAPI:
         return local.conn
 
     def filters(
-        q: str, kind: str, author: str, with_: str, thread: str, since: str, until: str
+        q: str,
+        kind: str,
+        author: str,
+        with_: str,
+        thread: str,
+        since: str,
+        until: str,
+        category: str = "",
     ) -> s.Filters:
         return s.Filters(
+            category=category or None,
             q=q,
             kinds=[k for k in kind.split(",") if k],
             author_ids=[int(x) for x in author.split(",") if x],
@@ -59,11 +67,12 @@ def create_app(db_path: Path, thumbs_dir: Path) -> FastAPI:
         thread: Str = "",
         since: Str = "",
         until: Str = "",
+        category: Str = "",
         sort: Str = "rank",
         limit: int = 50,
         offset: int = 0,
     ):
-        f = filters(q, kind, author, with_, thread, since, until)
+        f = filters(q, kind, author, with_, thread, since, until, category)
         return s.search(db(), f, limit=min(limit, 500), offset=offset, sort=sort)
 
     @app.get("/api/histogram")

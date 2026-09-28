@@ -39,6 +39,7 @@ class Filters:
     author_ids: list[int] = field(default_factory=list)
     with_ids: list[int] = field(default_factory=list)
     thread_id: str | None = None
+    category: str | None = None
     since: int | None = None
     until: int | None = None
 
@@ -67,6 +68,9 @@ def _where(f: Filters, fts: str | None) -> tuple[str, list[Any]]:
     if f.thread_id:
         clauses.append("i.thread_id = ?")
         params.append(f.thread_id)
+    if f.category:
+        clauses.append("i.category = ?")
+        params.append(f.category)
     if f.since is not None:
         clauses.append("i.ts >= ?")
         params.append(f.since)

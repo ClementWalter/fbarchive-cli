@@ -32,7 +32,8 @@ const enc = encodeURIComponent;
 const LOCALE = undefined;
 const fmtDate = (ms) => ms ? new Date(ms).toLocaleDateString(LOCALE, { day: "numeric", month: "long", year: "numeric" }) : "Undated";
 const fmtTime = (ms) => new Date(ms).toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" });
-const fmtLong = (ms) => ms ? `${fmtDate(ms)} at ${fmtTime(ms)}` : "Undated";
+// One locale-aware call, so French reads "23 octobre 2021 à 19:30" rather than mixing languages.
+const fmtLong = (ms) => ms ? new Date(ms).toLocaleString(LOCALE, { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "Undated";
 const fmtMonth = (ms) => new Date(ms).toLocaleDateString(LOCALE, { month: "long", year: "numeric" });
 const fmtShort = (ms) => {
   if (!ms) return "";
@@ -84,10 +85,15 @@ const ICONS = {
   phone: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/>',
   external: '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>',
   user: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  check: '<polyline points="20 6 9 17 4 12"/>',
+  star: '<polygon points="12 2 15.1 8.3 22 9.3 17 14.1 18.2 21 12 17.8 5.8 21 7 14.1 2 9.3 8.9 8.3 12 2"/>',
+  mail: '<path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><polyline points="22 6 12 13 2 6"/>',
+  mapPin: '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',
   sparkles: '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9z"/>',
 };
 const icon = (n, cls = "") => `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n] || ""}</svg>`;
 
+const EVENTS_DIR = "your_facebook_activity/events/";
 const KINDS = {
   message: { label: "Messages", icon: "chat", color: "#0a7cff" },
   post: { label: "Posts", icon: "edit", color: "#45bd62" },
@@ -338,7 +344,47 @@ function titleHtml(t) {
   return esc(t);
 }
 
+// ---------------------------------------------------------------- events
+const RSVP = {
+  going: { label: "Going", icon: "check" },
+  interested: { label: "Interested", icon: "star" },
+  hosted: { label: "Your event", icon: "user" },
+  declined: { label: "Can't go", icon: "x" },
+  invited: { label: "Invited", icon: "mail" },
+};
+const itemHref = (it) => (it.thread_id ? msgHref(it) : `#/item/${it.id}`);
+const rsvpPill = (r) => r && RSVP[r] ? `<span class="rsvp rsvp-${r}">${icon(RSVP[r].icon, "sm")}${RSVP[r].label}</span>` : "";
+function dateTile(ms, big = false) {
+  if (!ms) return `<div class="dtile${big ? " big" : ""}"><span>—</span><b>?</b></div>`;
+  const d = new Date(ms);
+  return `<div class="dtile${big ? " big" : ""}"><span>${esc(d.toLocaleDateString(LOCALE, { month: "short" }).replace(".", ""))}</span><b>${d.getDate()}</b></div>`;
+}
+/** "SATURDAY 16 JANUARY 2010 AT 19:30 – 02:30", with the end date when it's another day. */
+function eventWhen(ev) {
+  if (!ev?.start) return "Date unknown";
+  const s = new Date(ev.start);
+  let out = s.toLocaleString(LOCALE, { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  if (ev.end && ev.end > ev.start) {
+    const sameDay = ev.end - ev.start < 20 * 3600 * 1000;
+    out += ` – ${sameDay ? fmtTime(ev.end) : new Date(ev.end).toLocaleString(LOCALE, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}`;
+  }
+  return out;
+}
+function eventCard(it) {
+  const ev = it.extra?.event || {};
+  const el = document.createElement("article");
+  el.className = "card ev-card";
+  const snippet = it.snippet && it.snippet.includes(HL_START) && it.body ? `<div class="ev-snip">${hl(it.snippet)}</div>` : "";
+  el.innerHTML = `<a class="ev-row" href="${itemHref(it)}">${dateTile(ev.start || it.ts)}
+    <div class="ev-main"><div class="ev-when">${esc(eventWhen(ev))}</div>
+      <div class="ev-title">${hl(it.title || "Event")}</div>
+      ${ev.place ? `<div class="sub ell">${icon("mapPin", "xs")} ${esc(ev.place)}</div>` : ""}${snippet}</div>
+    ${rsvpPill(ev.rsvp)}</a>`;
+  return el;
+}
+
 function postCard(it, { full = false } = {}) {
+  if (it.kind === "event" && it.extra?.event && !full) return eventCard(it);
   const msg = !!it.thread_id;
   const who = it.author || (OWN_KINDS.has(it.kind) ? ME.name : null);
   const av = who ? avatar(who, 40) : kindAvatar(it.kind, 40);
@@ -370,21 +416,18 @@ function postCard(it, { full = false } = {}) {
     ${meta}${linkCards(it)}${postMedia(it.media, it)}
     <div class="p-actions">
       ${msg ? `<a href="${msgHref(it)}">${icon("chat")} Open conversation</a>`
-            : (full ? "" : `<button data-open>${icon("info")} Details</button>`)}
+            : (full ? "" : `<a href="#/item/${it.id}">${icon("info")} Details</a>`)}
       ${it.ts ? `<a href="${href("/search", { since: isoDay(it.ts), until: isoDay(it.ts), sort: "old" })}">${icon("calendar")} That day</a>` : ""}
     </div>`;
-  $("[data-open]", el)?.addEventListener("click", () => showItem(it.id));
+  if (!full) {
+    // Like Facebook: clicking anywhere on the card (but its links and media) opens it.
+    el.classList.add("clickable");
+    el.addEventListener("click", (e) => {
+      if (e.target.closest("a, button, video, audio, [data-lb]")) return;
+      location.hash = itemHref(it);
+    });
+  }
   return el;
-}
-
-async function showItem(id) {
-  const it = await api(`item/${id}`);
-  modal((KINDS[it.kind]?.label || "Item").replace(/s$/, ""), `<div id="modal-post"></div>`);
-  const card = postCard(it, { full: true });
-  card.classList.remove("card");
-  $("#modal-post", overlay).append(card);
-  // The theater lives on #app; media inside the modal opens the original instead.
-  $$("[data-lb]", overlay).forEach((t) => t.addEventListener("click", () => window.open(`/media/${t.dataset.lb}`, "_blank")));
 }
 
 // ---------------------------------------------------------------- shared chrome
@@ -490,6 +533,8 @@ views.search = async ({ params }) => {
       <h2>${st.q ? `Results for “${esc(st.q)}”` : kind ? esc(KINDS[kind]?.label || kind) : "Everything"}</h2>
       <div class="sub" id="count">&nbsp;</div>
       <div class="chips">${[["", "All"], ...Object.entries(KINDS).map(([k, v]) => [k, v.label])].map(([k, l]) => `<button class="chip${k === kind ? " on" : ""}" data-k="${k}">${l}</button>`).join("")}</div>
+      ${kind === "event" ? `<div class="chips rsvp-chips">${[["", "All events"], ...Object.entries(RSVP).map(([k, v]) => [k, v.label])].map(([k, l]) =>
+        `<button class="chip${(st.category || "") === (k && EVENTS_DIR + k) ? " on" : ""}" data-cat="${k && EVENTS_DIR + k}">${l}</button>`).join("")}</div>` : ""}
     </div>
     <div id="results" class="feed"></div><div class="sentinel"></div>`,
   `<div class="card rcard filters-card"><h3 class="filters-toggle">${icon("search", "sm")} Filters<span class="grow"></span>${icon("right", "sm")}</h3><div class="filters-body">
@@ -506,7 +551,8 @@ views.search = async ({ params }) => {
 
   const update = (patch) => go("/search", { ...st, ...patch }, true);
   $(".filters-toggle", app).addEventListener("click", () => $(".filters-card", app).classList.toggle("open"));
-  $$(".chip", app).forEach((c) => c.addEventListener("click", () => update({ kind: c.dataset.k })));
+  $$(".chip[data-k]", app).forEach((c) => c.addEventListener("click", () => update({ kind: c.dataset.k, category: "" })));
+  $$(".chip[data-cat]", app).forEach((c) => c.addEventListener("click", () => update({ category: c.dataset.cat })));
   $$("[data-clear]", app).forEach((b) => b.addEventListener("click", () => update({ [b.dataset.clear]: "", [b.dataset.clear + "Name"]: "" })));
   $("[data-clear-day]", app)?.addEventListener("click", () => update({ since: "", until: "" }));
   $$("input[data-role]", app).forEach((inp) => personPicker(inp, (p) => update({ [inp.dataset.role]: p.id, [inp.dataset.role + "Name"]: p.name })));
@@ -515,7 +561,7 @@ views.search = async ({ params }) => {
   $("[data-reset]", app).addEventListener("click", () => go("/search", { q: st.q }, true));
   if (st.thread) api(`thread/${enc(st.thread)}`).then((t) => { const n = $("#thread-name"); if (n) n.textContent = t.title; });
 
-  const q = { q: st.q, kind, with: st.with, author: st.author, thread: st.thread, since: st.since, until: st.until };
+  const q = { q: st.q, kind, with: st.with, author: st.author, thread: st.thread, since: st.since, until: st.until, category: st.category };
   const gen = ++searchGen;
   api("histogram", q).then((rows) => {
     const h = $("#hist");
@@ -723,6 +769,75 @@ async function openConversation(tid, at, conv, info) {
     return !newerDone;
   }, scroller, msgr.convObservers);
 }
+
+// Item page: a full post, or a Facebook-style event page, with related conversations.
+const STOP = new Set("les des une pour avec dans sur par the and for with chez ans party soirée soiree".split(" "));
+function mentionQuery(title) {
+  const words = ((title || "").match(/[\p{L}\p{N}]{3,}/gu) || []).filter((w) => !STOP.has(w.toLowerCase()));
+  return [...new Set(words)].sort((a, b) => b.length - a.length).slice(0, 3).map((w) => `"${w}"`).join(" ");
+}
+function threadRows(items, sub) {
+  const by = new Map();
+  for (const m of items) {
+    const g = by.get(m.thread_id) || { t: m, n: 0 };
+    g.n++; by.set(m.thread_id, g);
+  }
+  return [...by.values()].sort((a, b) => b.n - a.n).slice(0, 8).map(({ t, n }) =>
+    `<a class="list-row" href="${msgHref(t)}">${avatar(t.thread_title, 36)}<div class="grow"><div class="t ell">${esc(t.thread_title)}</div>
+      <div class="sub ell">${sub(t, n)}</div></div>${icon("right", "sm")}</a>`).join("");
+}
+views.item = async ({ parts }) => {
+  const it = await api(`item/${parts[1]}`);
+  const ev = it.kind === "event" ? it.extra?.event || {} : null;
+  const day = (ev?.start || it.ts) ? isoDay(ev?.start || it.ts) : null;
+  app.className = "page-1";
+  app.innerHTML = `<div class="item-page"><main id="item-main"></main><aside class="item-rail">
+      ${ev ? `<div class="card" id="mentions"><h3 class="card-title">Mentioned in conversations</h3>${spinner()}</div>` : ""}
+      ${day ? `<div class="card" id="thatday"><h3 class="card-title">Conversations that day</h3>${spinner()}</div>` : ""}
+    </aside></div>`;
+  const main = $("#item-main");
+  if (ev) {
+    const map = ev.lat != null ? `https://www.openstreetmap.org/?mlat=${ev.lat}&mlon=${ev.lon}#map=15/${ev.lat}/${ev.lon}` : null;
+    const hours = ev.end && ev.start ? (ev.end - ev.start) / 3600000 : null;
+    main.innerHTML = `
+      <div class="card ev-page">
+        <div class="ev-cover" style="background:linear-gradient(135deg, ${colorOf(it.title)} 0%, ${colorOf(it.title + "·")} 100%)">${dateTile(ev.start, true)}</div>
+        <div class="ev-head">
+          <div class="ev-when big">${esc(eventWhen(ev))}</div>
+          <h1>${esc(it.title)}</h1>
+          ${ev.place ? `<div class="muted">${esc(ev.place)}</div>` : ""}
+          <div class="ev-actions">${rsvpPill(ev.rsvp)}
+            ${day ? `<a class="btn" href="${href("/search", { since: day, until: day, sort: "old" })}">${icon("calendar", "sm")} What happened that day</a>` : ""}
+            ${it.title ? `<a class="btn" href="${href("/search", { q: mentionQuery(it.title), kind: "message" })}">${icon("search", "sm")} Search mentions</a>` : ""}
+            ${ev.url ? `<a class="btn" href="${esc(ev.url)}" target="_blank" rel="noopener">${icon("external", "sm")} View on Facebook</a>` : ""}
+          </div>
+        </div>
+      </div>
+      <div class="card rcard"><h3>Details</h3>
+        ${ev.rsvp ? `<div class="intro-row">${icon(RSVP[ev.rsvp]?.icon || "info", "sm")} ${ev.rsvp === "hosted" ? "You created this event" : `Your response: <b>${esc(RSVP[ev.rsvp]?.label)}</b>`}${ev.responded ? ` <span class="muted">· ${esc(fmtDate(ev.responded))}</span>` : ""}</div>` : ""}
+        ${hours ? `<div class="intro-row">${icon("clock", "sm")} ${hours < 24 ? `${Math.round(hours * 10) / 10} hours` : `${Math.round(hours / 24)} days`}</div>` : ""}
+        ${ev.place || ev.address ? `<div class="intro-row">${icon("mapPin", "sm")} <span>${esc([...new Set([ev.place, ev.address].filter(Boolean))].join(" · "))}
+          ${map ? ` · <a class="link" href="${map}" target="_blank" rel="noopener">Open map</a>` : ""}</span></div>` : ""}
+        ${it.body ? `<div class="ev-desc">${linkify(esc(it.body))}</div>` : `<p class="muted">Facebook only exported the name and date of this event.</p>`}
+      </div>`;
+    const mq = mentionQuery(it.title);
+    const mentions = !mq ? { items: [] } : await api("search", {
+      q: mq, kind: "message", limit: 60,
+      since: ev.start ? isoDay(ev.start - 60 * 86400000) : "", until: ev.start ? isoDay(ev.start + 30 * 86400000) : "",
+    }).catch(() => ({ items: [] }));
+    const mbox = $("#mentions");
+    if (mbox) mbox.innerHTML = `<h3 class="card-title">Mentioned in conversations</h3>` + (threadRows(mentions.items, (t, n) => `${plural(n, "mention")} · ${hl(t.snippet || "")}`)
+      || `<p class="muted card-empty">No messages mention it around that date.</p>`);
+  } else {
+    main.append(postCard(it, { full: true }));
+  }
+  if (day) {
+    const res = await api("search", { kind: "message", since: day, until: day, sort: "old", limit: 300 });
+    const box = $("#thatday");
+    if (box) box.innerHTML = `<h3 class="card-title">Conversations that day</h3>` + (threadRows(res.items, (t, n) => `${plural(n, "message")} · from ${fmtTime(t.ts)}`)
+      || `<p class="muted card-empty">No messages that day.</p>`);
+  }
+};
 
 // People: Facebook "Friends"-style grid.
 views.people = async ({ params }) => {

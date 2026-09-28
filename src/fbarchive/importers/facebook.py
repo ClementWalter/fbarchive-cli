@@ -92,6 +92,7 @@ def find_exports(path: Path) -> list[Path]:
 def iter_export(root: Path, workers: int = 16) -> Iterator[Thread | Item]:
     """Yield every thread and item of one export root."""
     paths = sorted(p for p in root.rglob("*.json") if p.is_file())
+    events = EventMerger()
     # Reads run in a pool: on network/cloud mounts latency dominates, not parsing.
     with ThreadPoolExecutor(workers) as pool:
         for path, raw in zip(paths, pool.map(Path.read_bytes, paths), strict=True):
@@ -103,8 +104,120 @@ def iter_export(root: Path, workers: int = 16) -> Iterator[Thread | Item]:
                 continue
             if m := MESSAGE_FILE.search(rel):
                 yield from parse_thread_file(data, box=m.group(2), folder=m.group(3))
+            elif rel.removesuffix(".json") in EVENT_FILES:
+                events.add_file(data, EVENT_FILES[rel.removesuffix(".json")])
             else:
                 yield from parse_generic_file(data, rel)
+    yield from events.items()
+
+
+EVENTS_DIR = "your_facebook_activity/events/"
+# File -> the RSVP it implies. `your_event_responses` holds one list per RSVP.
+EVENT_FILES = {
+    f"{EVENTS_DIR}your_event_responses": None,
+    f"{EVENTS_DIR}event_invitations": "invited",
+    f"{EVENTS_DIR}your_events": "hosted",
+    f"{EVENTS_DIR}events_you_hosted": "hosted",
+}
+RSVP_KEYS = {
+    "events_joined": "going",
+    "events_interested": "interested",
+    "events_declined": "declined",
+}
+# When an event shows up in several files, the most committed answer wins.
+RSVP_RANK = {"invited": 0, "declined": 1, "interested": 2, "going": 3, "hosted": 4}
+
+
+def _event_from_labels(label_values: list) -> dict[str, Any]:
+    """Flatten the label/value tree of `events_you_hosted` into the plain event shape."""
+    fields = {
+        "Name": "name",
+        "Start time": "start_timestamp",
+        "End time": "end_timestamp",
+        "Description": "description",
+        "URL": "url",
+    }
+    out: dict[str, Any] = {}
+
+    def walk(node: Any, section: str | None) -> None:
+        if isinstance(node, list):
+            for x in node:
+                walk(x, section)
+        elif isinstance(node, dict):
+            section = node.get("title") or section
+            key = fields.get(node.get("label", ""))
+            # Only the "Event" section: "Event host" also has a Name (the host's).
+            if key and section == "Event" and key not in out:
+                out[key] = node.get("timestamp_value") or node.get("href") or node.get("value")
+            walk(node.get("dict"), section)
+
+    walk(label_values, None)
+    return out
+
+
+class EventMerger:
+    """Folds the event files into one record per (name, start), keeping RSVP and place."""
+
+    def __init__(self) -> None:
+        self._events: dict[tuple[str, int], dict[str, Any]] = {}
+
+    def add_file(self, data: Any, rsvp: str | None) -> None:
+        body = next(iter(data.values()), None) if isinstance(data, dict) else data
+        if isinstance(body, dict):
+            for key, events in body.items():
+                self._add_many(events, RSVP_KEYS.get(key, "invited"))
+        else:
+            self._add_many(body, rsvp or "invited")
+
+    def _add_many(self, events: Any, rsvp: str) -> None:
+        for ev in events if isinstance(events, list) else []:
+            if isinstance(ev, dict) and "label_values" in ev:
+                ev = _event_from_labels(ev["label_values"])
+            if not isinstance(ev, dict) or not ev.get("name"):
+                continue
+            key = (ev["name"], ev.get("start_timestamp") or 0)
+            cur = self._events.setdefault(key, {"name": ev["name"], "rsvp": rsvp})
+            if RSVP_RANK[rsvp] > RSVP_RANK[cur["rsvp"]]:
+                cur["rsvp"] = rsvp
+            for field in (
+                "start_timestamp",
+                "end_timestamp",
+                "description",
+                "place",
+                "response_time",
+                "create_timestamp",
+                "url",
+            ):
+                if ev.get(field) and not cur.get(field):
+                    cur[field] = ev[field]
+
+    def items(self) -> Iterator[Item]:
+        for ev in self._events.values():
+            place = ev.get("place") or {}
+            coord = place.get("coordinate") or {}
+            info = {
+                "start": to_ms(ev.get("start_timestamp")),
+                "end": to_ms(ev.get("end_timestamp")),
+                "rsvp": ev["rsvp"],
+                "responded": to_ms(ev.get("response_time")),
+                "place": place.get("name"),
+                "address": place.get("address") or None,
+                "lat": coord.get("latitude"),
+                "lon": coord.get("longitude"),
+                "url": ev.get("url"),
+            }
+            where = " · ".join(dict.fromkeys(v for v in (info["place"], info["address"]) if v))
+            yield Item(
+                kind="event",
+                category=f"{EVENTS_DIR}{ev['rsvp']}",
+                ts=info["start"],
+                title=ev["name"],
+                body=ev.get("description") or None,
+                meta=where or None,
+                extra={"event": {k: v for k, v in info.items() if v is not None}},
+                # Identity is the event itself, so a changed RSVP in a later export merges.
+                key=f"event\x1f{ev['name']}\x1f{ev.get('start_timestamp') or 0}",
+            )
 
 
 def parse_thread_file(data: dict, box: str, folder: str) -> Iterator[Thread | Item]:
