@@ -45,3 +45,21 @@ def test_people_lists_owner_first(cli_db):
 
 def test_serve_without_index_fails(tmp_path):
     assert run(tmp_path / "missing.db", "serve").exit_code == 1
+
+
+def test_threads_lists_ids(cli_db):
+    assert "fb:skitrip_222" in run(cli_db, "threads", "ski").output
+
+
+def test_threads_with_person_json(cli_db):
+    out = json.loads(run(cli_db, "threads", "--with", "Paul", "--json").output)
+    assert [t["id"] for t in out] == ["fb:skitrip_222"]
+
+
+def test_search_text_shows_thread_id(cli_db):
+    assert "[fb:mariedupre_111]" in run(cli_db, "search", "lyon").output
+
+
+def test_people_json(cli_db):
+    out = json.loads(run(cli_db, "people", "Paul", "--json").output)
+    assert out[0]["name"] == "Paul Martin"

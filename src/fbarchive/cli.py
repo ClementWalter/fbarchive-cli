@@ -128,10 +128,12 @@ def search_cmd(db_path, query, kind, author, with_, thread, since, until, sort, 
     for it in res["items"]:
         where = it["thread_title"] or it["title"] or it["category"]
         who = f"{it['author']}: " if it["author"] else ""
+        # The thread id is what `fbarchive thread` takes, with `--around <#id>`.
+        tid = click.style(f" [{it['thread_id']}]", dim=True) if it["thread_id"] else ""
         click.echo(
             f"{click.style(_fmt_ts(it['ts']), fg='cyan')} "
             f"{click.style(it['kind'], fg='magenta')} #{it['id']} "
-            f"{click.style(str(where), bold=True)}"
+            f"{click.style(str(where), bold=True)}{tid}"
         )
         click.echo(f"    {who}{_highlight(it['snippet'] or '')}")
     click.echo(click.style(f"{res['total']} results", dim=True), err=True)
@@ -159,14 +161,45 @@ def thread_cmd(db_path, thread_id, around, n, as_json):
         )
 
 
+@main.command("threads")
+@click.argument("query", default="")
+@click.option("--with", "with_", help="Only threads including this person (name substring).")
+@click.option("-n", "--limit", default=30, show_default=True)
+@click.option("--json", "as_json", is_flag=True)
+@click.pass_obj
+def threads_cmd(db_path, query, with_, limit, as_json):
+    """List conversations by recent activity (filter by title and/or participant)."""
+    conn = connect(db_path, readonly=True)
+    with_id = None
+    if with_:
+        found = s.resolve_people(conn, with_)
+        if not found:
+            raise click.BadParameter(f"no person matching {with_!r}")
+        with_id = found[0]
+    rows = s.list_threads(conn, q=query, with_id=with_id, limit=limit)
+    if as_json:
+        click.echo(orjson.dumps(rows).decode())
+        return
+    for t in rows:
+        click.echo(
+            f"{click.style(_fmt_ts(t['last_ts'])[:10], fg='cyan')} {t['n_items']:>6} msgs  "
+            f"{click.style(t['title'], bold=True)} {click.style(t['id'], dim=True)}"
+        )
+
+
 @main.command("people")
 @click.argument("query", default="")
 @click.option("-n", "--limit", default=30, show_default=True)
+@click.option("--json", "as_json", is_flag=True)
 @click.pass_obj
-def people_cmd(db_path, query, limit):
+def people_cmd(db_path, query, limit, as_json):
     """List people by activity (optionally filtered by name)."""
     conn = connect(db_path, readonly=True)
-    for p in s.list_people(conn, q=query, limit=limit):
+    rows = s.list_people(conn, q=query, limit=limit)
+    if as_json:
+        click.echo(orjson.dumps(rows).decode())
+        return
+    for p in rows:
         click.echo(f"{p['id']:>6} {p['n_items']:>7} msgs {p['n_threads']:>4} threads  {p['name']}")
 
 
