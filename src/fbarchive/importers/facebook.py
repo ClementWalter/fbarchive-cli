@@ -106,6 +106,11 @@ def iter_export(root: Path, workers: int = 16) -> Iterator[Thread | Item]:
                 yield from parse_thread_file(data, box=m.group(2), folder=m.group(3))
             elif rel.removesuffix(".json") in EVENT_FILES:
                 events.add_file(data, EVENT_FILES[rel.removesuffix(".json")])
+            elif rel.removesuffix(".json") == VISITED_FILE:
+                # Mixed file: event pages you opened (with their description) and groups.
+                for rec in data if isinstance(data, list) else []:
+                    if not events.add_visited(rec):
+                        yield record_to_item(rec, "activity", VISITED_FILE)
             else:
                 yield from parse_generic_file(data, rel)
     yield from events.items()
@@ -125,11 +130,13 @@ RSVP_KEYS = {
     "events_declined": "declined",
 }
 # When an event shows up in several files, the most committed answer wins.
-RSVP_RANK = {"invited": 0, "declined": 1, "interested": 2, "going": 3, "hosted": 4}
+RSVP_RANK = {"visited": -1, "invited": 0, "declined": 1, "interested": 2, "going": 3, "hosted": 4}
+VISITED_FILE = "logged_information/interactions/groups_and_events_you've_visited"
+EVENT_URL = re.compile(r"facebook\.com/events/(\d+)")
 
 
 def _event_from_labels(label_values: list) -> dict[str, Any]:
-    """Flatten the label/value tree of `events_you_hosted` into the plain event shape."""
+    """Flatten a label/value tree (`events_you_hosted`, visited events) into the event shape."""
     fields = {
         "Name": "name",
         "Start time": "start_timestamp",
@@ -146,8 +153,8 @@ def _event_from_labels(label_values: list) -> dict[str, Any]:
         elif isinstance(node, dict):
             section = node.get("title") or section
             key = fields.get(node.get("label", ""))
-            # Only the "Event" section: "Event host" also has a Name (the host's).
-            if key and section == "Event" and key not in out:
+            # Top level or the "Event" section: "Event host" also has a Name (the host's).
+            if key and section in (None, "Event") and key not in out:
                 out[key] = node.get("timestamp_value") or node.get("href") or node.get("value")
             walk(node.get("dict"), section)
 
@@ -168,6 +175,16 @@ class EventMerger:
                 self._add_many(events, RSVP_KEYS.get(key, "invited"))
         else:
             self._add_many(body, rsvp or "invited")
+
+    def add_visited(self, rec: Any) -> bool:
+        """Merge a visited event page; False when the record isn't an event (e.g. a group)."""
+        if not isinstance(rec, dict) or "label_values" not in rec:
+            return False
+        ev = _event_from_labels(rec["label_values"])
+        if not ev.get("name") or "start_timestamp" not in ev:
+            return False
+        self._add_many([ev], "visited")
+        return True
 
     def _add_many(self, events: Any, rsvp: str) -> None:
         for ev in events if isinstance(events, list) else []:
@@ -205,6 +222,8 @@ class EventMerger:
                 "lat": coord.get("latitude"),
                 "lon": coord.get("longitude"),
                 "url": ev.get("url"),
+                # Links shared in Messenger carry this id: the key to who sent the event.
+                "fbid": m.group(1) if (m := EVENT_URL.search(ev.get("url") or "")) else None,
             }
             where = " · ".join(dict.fromkeys(v for v in (info["place"], info["address"]) if v))
             yield Item(

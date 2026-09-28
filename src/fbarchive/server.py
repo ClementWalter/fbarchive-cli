@@ -87,9 +87,9 @@ def create_app(db_path: Path, thumbs_dir: Path) -> FastAPI:
     ):
         return s.histogram(db(), filters(q, kind, author, with_, thread, since, until))
 
-    @app.get("/api/item/{item_id}")
-    def api_item(item_id: int):
-        if not (it := s.get_item(db(), item_id)):
+    @app.get("/api/item/{key}")
+    def api_item(key: str):
+        if not (it := s.get_item(db(), key)):
             raise HTTPException(404)
         return it
 
@@ -102,7 +102,7 @@ def create_app(db_path: Path, thumbs_dir: Path) -> FastAPI:
     @app.get("/api/thread/{thread_id}/messages")
     def api_thread_messages(
         thread_id: str,
-        around: int | None = None,
+        around: str | None = None,
         before_ts: int | None = None,
         before_id: int | None = None,
         after_ts: int | None = None,
@@ -111,7 +111,8 @@ def create_app(db_path: Path, thumbs_dir: Path) -> FastAPI:
     ):
         before = (before_ts, before_id) if before_ts is not None else None
         after = (after_ts, after_id) if after_ts is not None else None
-        return s.thread_window(db(), thread_id, around=around, before=before, after=after, n=n)
+        anchor = s.resolve_item(db(), around) if around else None
+        return s.thread_window(db(), thread_id, around=anchor, before=before, after=after, n=n)
 
     @app.get("/api/threads")
     def api_threads(

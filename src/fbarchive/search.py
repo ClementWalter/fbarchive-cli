@@ -93,7 +93,7 @@ def _run_fts(conn: sqlite3.Connection, f: Filters, build) -> list[sqlite3.Row]:
 
 ITEM_COLS = (
     "i.id, i.kind, i.category, i.ts, i.title, i.body, i.meta, i.extra, i.thread_id, "
-    "i.author_id, "
+    "i.author_id, i.uid, "
     "t.title AS thread_title, p.name AS author, p.is_me AS author_is_me"
 )
 ITEM_JOINS = "LEFT JOIN threads t ON t.id = i.thread_id LEFT JOIN people p ON p.id = i.author_id"
@@ -187,7 +187,16 @@ def _attach_media(conn: sqlite3.Connection, items: list[dict[str, Any]]) -> None
             )
 
 
-def get_item(conn: sqlite3.Connection, item_id: int) -> dict[str, Any] | None:
+def resolve_item(conn: sqlite3.Connection, key: str | int) -> int | None:
+    """Row id for a row id or a content uid; uids survive a full index rebuild, ids don't."""
+    if isinstance(key, int) or str(key).isdigit():
+        return int(key)
+    row = conn.execute("SELECT id FROM items WHERE uid = ?", (key,)).fetchone()
+    return row[0] if row else None
+
+
+def get_item(conn: sqlite3.Connection, key: str | int) -> dict[str, Any] | None:
+    item_id = resolve_item(conn, key)
     r = conn.execute(f"SELECT {ITEM_COLS} FROM items i {ITEM_JOINS} WHERE i.id = ?", (item_id,))
     row = r.fetchone()
     if not row:

@@ -70,3 +70,20 @@ def test_onthisday_endpoint(client):
 
 def test_threads_endpoint_paging(client):
     assert len(client.get("/api/threads", params={"limit": 1}).json()) == 1
+
+
+def test_item_by_uid(client):
+    hit = client.get("/api/search", params={"q": "lyon"}).json()["items"][0]
+    assert client.get(f"/api/item/{hit['uid']}").json()["id"] == hit["id"]
+
+
+def test_thread_around_uid(client):
+    hit = client.get("/api/search", params={"q": "lyon"}).json()["items"][0]
+    msgs = client.get(
+        f"/api/thread/{hit['thread_id']}/messages", params={"around": hit["uid"], "n": 2}
+    ).json()
+    assert hit["id"] in [m["id"] for m in msgs]
+
+
+def test_unknown_uid_404(client):
+    assert client.get("/api/item/deadbeefdeadbeefdeadbeef").status_code == 404

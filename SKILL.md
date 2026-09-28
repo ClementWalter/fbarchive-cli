@@ -91,8 +91,10 @@ fbarchive search "anniversaire" --from "Zoé Exemple" --json
 
 Events are one record each (`-k event`), and their `--json` `extra.event`
 holds `start`, `end`, `rsvp` (`going`, `interested`, `declined`, `invited`,
-`hosted`), `place`, `address`, `lat`/`lon` and `url` when Facebook exported
-them.
+`hosted`, `visited` = page opened without answering), `place`, `address`,
+`lat`/`lon`, `url` and `fbid` when Facebook exported them. The export never says
+who hosted an event or invited you. To find out who sent it, search Messenger
+for its id: `fbarchive search '"<fbid>"' -k message`.
 
 ### `fbarchive threads [TITLE] [--with NAME] [-n N] [--json]`
 

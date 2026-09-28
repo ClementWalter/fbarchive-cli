@@ -110,3 +110,41 @@ def test_category_filter_by_rsvp(events_root: Path, tmp_path: Path):
     ix.finalize()
     res = s.search(conn, s.Filters(kinds=["event"], category=f"{EV}/declined"))
     assert [r["title"] for r in res["items"]] == ["Semaine ski"]
+
+
+def test_visited_event_adds_description(events_root: Path):
+    visited = [
+        {
+            "timestamp": 1,
+            "label_values": [
+                {"label": "Name", "value": "Semaine ski"},
+                {"label": "Start time", "timestamp_value": 1300000000},
+                {"label": "Description", "value": "Tout schuss"},
+                {"label": "URL", "href": "https://www.facebook.com/events/42/"},
+            ],
+        },
+        {"timestamp": 2, "label_values": [{"label": "Name", "value": "Un groupe"}]},
+    ]
+    write(
+        events_root,
+        "logged_information/interactions/groups_and_events_you've_visited.json",
+        visited,
+    )
+    items = list(facebook.iter_export(events_root))
+    ski = next(i for i in items if i.title == "Semaine ski")
+    assert (ski.body, ski.extra["event"]["fbid"], ski.extra["event"]["rsvp"]) == (
+        "Tout schuss",
+        "42",
+        "declined",
+    )
+
+
+def test_visited_non_event_stays_activity(events_root: Path):
+    visited = [{"timestamp": 1600000000, "label_values": [{"label": "Name", "value": "Un groupe"}]}]
+    write(
+        events_root,
+        "logged_information/interactions/groups_and_events_you've_visited.json",
+        visited,
+    )
+    kinds = {i.title or i.body: i.kind for i in facebook.iter_export(events_root)}
+    assert kinds["Un groupe"] == "activity"

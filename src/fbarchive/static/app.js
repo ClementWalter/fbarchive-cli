@@ -85,6 +85,7 @@ const ICONS = {
   phone: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/>',
   external: '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>',
   user: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
   check: '<polyline points="20 6 9 17 4 12"/>',
   star: '<polygon points="12 2 15.1 8.3 22 9.3 17 14.1 18.2 21 12 17.8 5.8 21 7 14.1 2 9.3 8.9 8.3 12 2"/>',
   mail: '<path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><polyline points="22 6 12 13 2 6"/>',
@@ -305,7 +306,8 @@ function histogram(el, rows, { onPick, selected, height = 72, stacked = false } 
 }
 
 // ---------------------------------------------------------------- post card
-const msgHref = (it) => href(`/messages/${enc(it.thread_id)}`, { at: it.id });
+// URLs use the content uid, stable across index rebuilds (row ids are not).
+const msgHref = (it) => href(`/messages/${enc(it.thread_id)}`, { at: it.uid || it.id });
 const nicePath = (c) => { const s = (c || "").split("/").pop().replace(/_\d+$/, "").replace(/_/g, " "); return s.charAt(0).toUpperCase() + s.slice(1); };
 function hostOf(u) { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return u; } }
 
@@ -351,8 +353,9 @@ const RSVP = {
   hosted: { label: "Your event", icon: "user" },
   declined: { label: "Can't go", icon: "x" },
   invited: { label: "Invited", icon: "mail" },
+  visited: { label: "Viewed", icon: "eye" },
 };
-const itemHref = (it) => (it.thread_id ? msgHref(it) : `#/item/${it.id}`);
+const itemHref = (it) => (it.thread_id ? msgHref(it) : `#/item/${it.uid || it.id}`);
 const rsvpPill = (r) => r && RSVP[r] ? `<span class="rsvp rsvp-${r}">${icon(RSVP[r].icon, "sm")}${RSVP[r].label}</span>` : "";
 function dateTile(ms, big = false) {
   if (!ms) return `<div class="dtile${big ? " big" : ""}"><span>—</span><b>?</b></div>`;
@@ -416,7 +419,7 @@ function postCard(it, { full = false } = {}) {
     ${meta}${linkCards(it)}${postMedia(it.media, it)}
     <div class="p-actions">
       ${msg ? `<a href="${msgHref(it)}">${icon("chat")} Open conversation</a>`
-            : (full ? "" : `<a href="#/item/${it.id}">${icon("info")} Details</a>`)}
+            : (full ? "" : `<a href="${itemHref(it)}">${icon("info")} Details</a>`)}
       ${it.ts ? `<a href="${href("/search", { since: isoDay(it.ts), until: isoDay(it.ts), sort: "old" })}">${icon("calendar")} That day</a>` : ""}
     </div>`;
   if (!full) {
@@ -598,7 +601,7 @@ views.search = async ({ params }) => {
 let msgr = null;
 views.messages = async ({ parts, params }) => {
   const tid = parts[1] || null;
-  const at = params.get("at") ? Number(params.get("at")) : null;
+  const at = params.get("at") || null;
   if (!msgr || !app.querySelector(".msgr")) buildInbox();
   $(".msgr", app).classList.toggle("has-thread", !!tid);
   $$(".trow", app).forEach((r) => r.classList.toggle("on", r.dataset.id === tid));
@@ -662,7 +665,8 @@ function buildInbox() {
 const SYSTEM_RE = /^(.+ (left the group|joined the group|added .+ to the group|removed .+ from the group|named the group.*|changed the group photo|changed the theme.*|set the emoji to.*|set (the|your|his|her|their) nickname.*|created the group.*|started a (video|audio) call|joined the (video|audio) call|pinned a message)\.?|You can now message and call each other.*|You are now connected on Messenger.*|Say hi to your new Facebook friend.*)$/i;
 const EMOJI_ONLY = /^(?:\p{Extended_Pictographic}|\p{Emoji_Modifier}|\p{Regional_Indicator}|‍|️|\s){1,16}$/u;
 
-async function openConversation(tid, at, conv, info) {
+async function openConversation(tid, atKey, conv, info) {
+  let at = atKey;
   const t = await api(`thread/${enc(tid)}`);
   const others = t.people.filter((p) => !p.is_me);
   const other = !t.is_group && others.length === 1 ? others[0] : null;
@@ -735,6 +739,9 @@ async function openConversation(tid, at, conv, info) {
   const batchHtml = (list, before, after) => list.map((m, k) => msgHtml(m, k ? list[k - 1] : before, list[k + 1] || after)).join("");
 
   const first = await api(`thread/${enc(tid)}/messages`, at ? { around: at, n: 80 } : { n: 80 });
+  // `at` may be a uid or a row id; highlight whichever message it names.
+  const target = at ? first.find((m) => m.uid === at || String(m.id) === String(at)) : null;
+  at = target ? target.id : null;
   if (route().parts[1] !== tid) return; // the user already moved on
   if (!first.length) { box.innerHTML = `<div class="conv-empty">Empty conversation</div>`; return; }
   let oldest = first[0], newest = first[first.length - 1];
@@ -792,6 +799,7 @@ views.item = async ({ parts }) => {
   const day = (ev?.start || it.ts) ? isoDay(ev?.start || it.ts) : null;
   app.className = "page-1";
   app.innerHTML = `<div class="item-page"><main id="item-main"></main><aside class="item-rail">
+      ${ev?.fbid ? `<div class="card" id="shared"><h3 class="card-title">Shared in Messenger</h3>${spinner()}</div>` : ""}
       ${ev ? `<div class="card" id="mentions"><h3 class="card-title">Mentioned in conversations</h3>${spinner()}</div>` : ""}
       ${day ? `<div class="card" id="thatday"><h3 class="card-title">Conversations that day</h3>${spinner()}</div>` : ""}
     </aside></div>`;
@@ -814,12 +822,25 @@ views.item = async ({ parts }) => {
         </div>
       </div>
       <div class="card rcard"><h3>Details</h3>
-        ${ev.rsvp ? `<div class="intro-row">${icon(RSVP[ev.rsvp]?.icon || "info", "sm")} ${ev.rsvp === "hosted" ? "You created this event" : `Your response: <b>${esc(RSVP[ev.rsvp]?.label)}</b>`}${ev.responded ? ` <span class="muted">· ${esc(fmtDate(ev.responded))}</span>` : ""}</div>` : ""}
+        ${ev.rsvp ? `<div class="intro-row">${icon(RSVP[ev.rsvp]?.icon || "info", "sm")} ${
+          ev.rsvp === "hosted" ? "You created this event"
+          : ev.rsvp === "visited" ? "You viewed this event without answering"
+          : `Your response: <b>${esc(RSVP[ev.rsvp]?.label)}</b>`}${ev.responded ? ` <span class="muted">· ${esc(fmtDate(ev.responded))}</span>` : ""}</div>` : ""}
+        ${ev.rsvp !== "hosted" ? `<div class="intro-row muted">${icon("info", "sm")} Facebook's export doesn't include the host, the guest list or who invited you.</div>` : ""}
         ${hours ? `<div class="intro-row">${icon("clock", "sm")} ${hours < 24 ? `${Math.round(hours * 10) / 10} hours` : `${Math.round(hours / 24)} days`}</div>` : ""}
         ${ev.place || ev.address ? `<div class="intro-row">${icon("mapPin", "sm")} <span>${esc([...new Set([ev.place, ev.address].filter(Boolean))].join(" · "))}
           ${map ? ` · <a class="link" href="${map}" target="_blank" rel="noopener">Open map</a>` : ""}</span></div>` : ""}
         ${it.body ? `<div class="ev-desc">${linkify(esc(it.body))}</div>` : `<p class="muted">Facebook only exported the name and date of this event.</p>`}
       </div>`;
+    if (ev.fbid) {
+      // The event link carries its id: messages sharing it show who sent it around.
+      const shared = await api("search", { q: `"${ev.fbid}"`, kind: "message", sort: "old", limit: 20 }).catch(() => ({ items: [] }));
+      const box = $("#shared");
+      if (box) box.innerHTML = `<h3 class="card-title">Shared in Messenger</h3>` + (shared.items.map((m) =>
+        `<a class="list-row" href="${msgHref(m)}">${avatar(m.author, 36)}<div class="grow"><div class="t ell">${esc(m.author_is_me ? "You" : m.author)}</div>
+          <div class="sub ell">Shared in ${esc(m.thread_title)} · ${esc(fmtLong(m.ts))}</div></div>${icon("right", "sm")}</a>`).join("")
+        || `<p class="muted card-empty">Nobody sent this event's link in Messenger.</p>`);
+    }
     const mq = mentionQuery(it.title);
     const mentions = !mq ? { items: [] } : await api("search", {
       q: mq, kind: "message", limit: 60,
