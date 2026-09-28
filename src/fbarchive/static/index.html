@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>fbarchive</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="#/search">fbarchive</a>
+    <nav>
+      <a href="#/search" data-nav="search">Search</a>
+      <a href="#/threads" data-nav="threads">Threads</a>
+      <a href="#/people" data-nav="people">People</a>
+      <a href="#/timeline" data-nav="timeline">Timeline</a>
+      <a href="#/gallery" data-nav="gallery">Gallery</a>
+    </nav>
+    <span id="stats" class="muted"></span>
+  </header>
+  <main id="view"></main>
+  <div id="modal" class="modal" hidden>
+    <div class="modal-box">
+      <button class="modal-close" aria-label="Close">×</button>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

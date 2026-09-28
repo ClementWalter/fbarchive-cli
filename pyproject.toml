@@ -1,0 +1,40 @@
+[project]
+name = "fbarchive"
+version = "0.1.0"
+description = "Fast, local search and viewer for Facebook 'Download your information' exports."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "click>=8.1",
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+  "orjson>=3.10",
+  "pillow>=10.4",
+]
+
+[project.scripts]
+fbarchive = "fbarchive.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "httpx>=0.27",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fbarchive"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "T20"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
