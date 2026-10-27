@@ -1,6 +1,6 @@
 # fbarchive-cli
 
-**Visibility: private.** Its history holds a real Messenger contact's name, thread id and message excerpt (an earlier SKILL.md example), and the tool indexes private message archives.
+**Visibility: public.**
 
 Fast, local search and a clean Facebook-like viewer for a Facebook **"Download your information"**
 export (JSON format). Everything stays on your machine.
