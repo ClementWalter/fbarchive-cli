@@ -2,6 +2,7 @@
 
 import logging
 import os
+import sys
 import webbrowser
 from datetime import datetime
 from pathlib import Path
@@ -29,7 +30,16 @@ def _highlight(text: str) -> str:
     )
 
 
-@click.group()
+@click.group(
+    epilog=(
+        "\b\n"
+        "Examples:\n"
+        "  fbarchive stats\n"
+        '  fbarchive search "appart lyon" --with Marie --since 2019\n'
+        "  fbarchive threads --limit 5\n"
+        "  fbarchive serve --open"
+    )
+)
 @click.option(
     "--db",
     "db_path",
@@ -41,22 +51,24 @@ def _highlight(text: str) -> str:
 @click.option("-v", "--verbose", is_flag=True)
 @click.pass_context
 def main(ctx: click.Context, db_path: Path, verbose: bool) -> None:
-    """Fast local search over your Facebook data export.
-
-    \b
-    Examples:
-      fbarchive import ~/Drive/meta-2026-Sep-09     # folder with facebook-* exports
-      fbarchive search "appart lyon" --with Marie --since 2019
-      fbarchive thread fb:mariedupont_123 --around 48213
-      fbarchive serve --open
-    """
+    """Fast local search over your Facebook data export."""
     logging.basicConfig(
-        level=logging.DEBUG if verbose else logging.INFO, format="%(levelname)s %(message)s"
+        stream=sys.stderr,
+        level=logging.DEBUG if verbose else logging.INFO,
+        format="%(levelname)s %(message)s",
     )
     ctx.obj = db_path
 
 
-@main.command("import")
+@main.command(
+    "import",
+    epilog=(
+        "\b\n"
+        "Examples:\n"
+        "  fbarchive import ~/Drive/meta-2026-Sep-09\n"
+        "  fbarchive import ~/Drive/facebook-someone-2026-09-09"
+    ),
+)
 @click.argument("paths", nargs=-1, required=True, type=click.Path(exists=True, path_type=Path))
 @click.pass_obj
 def import_(db_path: Path, paths: tuple[Path, ...]) -> None:
@@ -102,7 +114,16 @@ def _filters(conn, q, kind, author, with_, thread, since, until) -> s.Filters:
     )
 
 
-@main.command("search")
+@main.command(
+    "search",
+    epilog=(
+        "\b\n"
+        "Examples:\n"
+        '  fbarchive search "appart lyon" --with Marie --since 2019 --until 2020\n'
+        "  fbarchive search -k post --since 2015 --until 2015 --sort old\n"
+        "  fbarchive search anniversaire --from Paul --json"
+    ),
+)
 @click.argument("query", default="")
 @click.option("-k", "--kind", multiple=True, help="message, post, comment, photo, event, log...")
 @click.option("--from", "author", help="Written by this person (name substring).")
@@ -139,7 +160,15 @@ def search_cmd(db_path, query, kind, author, with_, thread, since, until, sort, 
     click.echo(click.style(f"{res['total']} results", dim=True), err=True)
 
 
-@main.command("thread")
+@main.command(
+    "thread",
+    epilog=(
+        "\b\n"
+        "Examples:\n"
+        "  fbarchive thread fb:mariedupont_1234 -n 20\n"
+        "  fbarchive thread fb:mariedupont_1234 --around 48213 --json"
+    ),
+)
 @click.argument("thread_id")
 @click.option("--around", type=int, help="Centre on this item id (from search output).")
 @click.option("-n", default=40, show_default=True)
@@ -161,7 +190,12 @@ def thread_cmd(db_path, thread_id, around, n, as_json):
         )
 
 
-@main.command("threads")
+@main.command(
+    "threads",
+    epilog=(
+        "\b\nExamples:\n  fbarchive threads --limit 2\n  fbarchive threads --with Marie --json"
+    ),
+)
 @click.argument("query", default="")
 @click.option("--with", "with_", help="Only threads including this person (name substring).")
 @click.option("-n", "--limit", default=30, show_default=True)
@@ -187,7 +221,10 @@ def threads_cmd(db_path, query, with_, limit, as_json):
         )
 
 
-@main.command("people")
+@main.command(
+    "people",
+    epilog=("\b\nExamples:\n  fbarchive people marie\n  fbarchive people --limit 10 --json"),
+)
 @click.argument("query", default="")
 @click.option("-n", "--limit", default=30, show_default=True)
 @click.option("--json", "as_json", is_flag=True)
@@ -203,14 +240,17 @@ def people_cmd(db_path, query, limit, as_json):
         click.echo(f"{p['id']:>6} {p['n_items']:>7} msgs {p['n_threads']:>4} threads  {p['name']}")
 
 
-@main.command("stats")
+@main.command("stats", epilog="\b\nExamples:\n  fbarchive stats")
 @click.pass_obj
 def stats_cmd(db_path):
     """Summary of what's indexed."""
     click.echo(orjson.dumps(s.stats(connect(db_path, readonly=True)), option=orjson.OPT_INDENT_2))
 
 
-@main.command("serve")
+@main.command(
+    "serve",
+    epilog=("\b\nExamples:\n  fbarchive serve --open\n  fbarchive serve --port 8800"),
+)
 @click.option("--host", default="127.0.0.1", show_default=True)
 @click.option("--port", default=8765, show_default=True)
 @click.option("--open", "open_browser", is_flag=True, help="Open the UI in the browser.")

@@ -1,4 +1,6 @@
-# fbarchive
+# fbarchive-cli
+
+**Visibility: private.** Its history holds a real Messenger contact's name, thread id and message excerpt (an earlier SKILL.md example), and the tool indexes private message archives.
 
 Fast, local search and a clean Facebook-like viewer for a Facebook **"Download your information"**
 export (JSON format). Everything stays on your machine.
@@ -37,10 +39,12 @@ export (JSON format). Everything stays on your machine.
 ## Install
 
 ```bash
-uv tool install git+https://github.com/ClementWalter/fbarchive
-# or, from a checkout
-uv sync
+git clone git@github.com:ClementWalter/fbarchive-cli ~/Documents/fbarchive-cli
+uv run ~/Documents/claudine/scripts/link_clis.py   # links bin/fbarchive into ~/.local/bin
 ```
+
+`bin/fbarchive` is a PEP 723 shim: uv runs the checkout with the exact pins of
+`pyproject.toml`, so a `git pull` applies at once.
 
 ## Use
 

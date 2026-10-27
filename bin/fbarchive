@@ -1,0 +1,26 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "click==8.5.0",
+#     "fastapi==0.141.1",
+#     "uvicorn==0.54.0",
+#     "orjson==3.12.0",
+#     "pillow==12.3.0",
+# ]
+#
+# [tool.uv]
+# exclude-newer = "2026-10-27T00:00:00Z"
+# ///
+"""Run the fbarchive CLI from a checkout without installing it; pins match pyproject.toml."""
+
+import sys
+from pathlib import Path
+
+# The package lives in src/ next to bin/.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+
+from fbarchive.cli import main
+
+if __name__ == "__main__":
+    main()
