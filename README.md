@@ -2,6 +2,8 @@
 
 **Visibility: public.**
 
+**Extension: not shipped** as a Claude Desktop extension: it needs the user's own Facebook export imported from a terminal first.
+
 Fast, local search and a clean Facebook-like viewer for a Facebook **"Download your information"**
 export (JSON format). Everything stays on your machine.
 
